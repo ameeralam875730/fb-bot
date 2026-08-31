@@ -161,10 +161,15 @@ async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🔑 **Your Key:** `{new_key}`\n"
         f"⏳ **Validity:** {days} Days\n"
-        f"👥 **Type:** SINGLE USER\n\n"
-        f"📋 **KAISE USE KAREIN:**\n"
-        f"Bot me bhejein: `/redeem {new_key}`\n\n"
-        f"🚫 **TO TURN OFF KEY:**\n"
+        f"👥 **Type:** SINGLE USER (1 PERSON ONLY)\n\n"
+        f"📋 **KAISE USE KAREIN (GUIDELINES):**\n"
+        f"1. Sabse pehle bot par ja kar `/start` dabayein.\n"
+        f"2. Niche di gayi command ko copy karke bot me bhejhein:\n\n"
+        f"`/redeem {new_key}`\n\n"
+        f"3. Key activate hote hi aap {days} din tak kisi bhi FB, YT, ya Insta video se lyrics extract kar sakte hain.\n\n"
+        f"⚠️ **Note:** Yeh key ek hi user ke liye hai. Single use only.\n\n"
+        f"🚫 **ADMIN CONTROL (To Turn Off Key):**\n"
+        f"Key Off Karne Ke Liye Yeh Command Bhejein:\n"
         f"`/revoke {new_key}`\n\n"
         f"👨‍💻 **Owner:** {BOT_OWNER}"
     )
@@ -186,15 +191,19 @@ async def genmultikey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     KEYS_DB[new_key] = {"days": days, "multi": True, "used_by": []}
 
     msg = (
-        f"🎉 **GLOBAL UNLIMITED ACTIVATION KEY** 🎉\n"
+        f"🎉 **VIP ACCESS ACTIVATION KEY** 🎉\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🔑 **Your Key:** `{new_key}`\n"
-        f"⏳ **Validity:** {days} Days (Per User)\n"
-        f"🌐 **Type:** MULTI-USER (UNLIMITED)\n\n"
-        f"📋 **KAISE USE KAREIN:**\n"
-        f"Is command ko share karein:\n\n"
+        f"⏳ **Validity:** {days} Days\n"
+        f"👥 **Type:** MULTI-USER (UNLIMITED USERS)\n\n"
+        f"📋 **KAISE USE KAREIN (GUIDELINES):**\n"
+        f"1. Sabse pehle bot par ja kar `/start` dabayein.\n"
+        f"2. Niche di gayi command ko copy karke bot me bhejhein:\n\n"
         f"`/redeem {new_key}`\n\n"
-        f"🚫 **TO TURN OFF KEY:**\n"
+        f"3. Key activate hote hi aap {days} din tak kisi bhi FB, YT, ya Insta video se lyrics extract kar sakte hain.\n\n"
+        f"⚠️ **Note:** Yeh key koi bhi kitne bhi log use kar sakte hain.\n\n"
+        f"🚫 **ADMIN CONTROL (To Turn Off Key):**\n"
+        f"Key Off Karne Ke Liye Yeh Command Bhejein:\n"
         f"`/revoke {new_key}`\n\n"
         f"👨‍💻 **Owner:** {BOT_OWNER}"
     )
@@ -209,7 +218,7 @@ async def revoke(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         target_key = context.args[0].strip()
     except IndexError:
-        await update.message.reply_text("⚠️ **Format:** `/revoke <KEY_CODE>`\nExample: `/revoke AMEER-66NUKQQSRG`")
+        await update.message.reply_text("⚠️ **Format:** `/revoke <KEY_CODE>`\nExample: `/revoke MULTI-6G4ACMNXTH`")
         return
 
     if target_key in KEYS_DB:
