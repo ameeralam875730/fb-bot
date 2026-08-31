@@ -35,42 +35,26 @@ def is_user_active(user_id):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     
+    welcome_msg = (
+        f"✨ **Welcome to {BOT_NAME}!** ✨\n\n"
+        "Main aapke bhejey hue video se poora **Speech / Lyrics** extract karke de sakta hoon.\n\n"
+        "🌐 **Supported Platforms:**\n"
+        "• 📘 Facebook Videos & Reels\n"
+        "• 🔴 YouTube Videos & Shorts\n"
+        "• 📸 Instagram Reels & Posts\n\n"
+        "📌 **Kaise use karein?**\n"
+        "Bas kisi bhi video ka link niche chat me send karein!"
+    )
+
     if user_id == ADMIN_ID:
-        welcome_msg = (
-            f"👑 **WELCOME OWNER / ADMIN!**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"Aapke paas **Permanent Access** hai.\n\n"
-            f"🔑 **Key Generate Karne Ke Liye:**\n"
-            f"Niche diye gaye **🔑 Generate Key** button par click karein ya type karein:\n"
-            f"• `/genkey 7` (7 Days)\n"
-            f"• `/genkey 30` (30 Days)\n\n"
-            f"📌 **Bot Test Karne Ke Liye:**\n"
-            f"Bas kisi bhi video ka link bhejhein."
-        )
         keyboard = [
             [
                 InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/AmeerBro786"),
                 InlineKeyboardButton("🔑 Generate Key", callback_data="admin_genkey_menu")
             ]
         ]
-        await update.message.reply_text(welcome_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-
-    if is_user_active(user_id):
-        exp_date = USERS_DB[user_id].strftime("%d-%b-%Y")
-        welcome_msg = (
-            f"✨ **Welcome to {BOT_NAME}!** ✨\n\n"
-            f"✅ **Account Status:** Active Premium\n"
-            f"📅 **Valid Till:** {exp_date}\n\n"
-            f"🌐 **Supported Platforms:**\n"
-            f"• 📘 Facebook Videos & Reels\n"
-            f"• 🔴 YouTube Videos & Shorts\n"
-            f"• 📸 Instagram Reels & Posts\n\n"
-            f"📌 **Kaise use karein?**\n"
-            f"Bas video ka link niche paste karke send karein!"
-        )
+    elif is_user_active(user_id):
         keyboard = [[InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/AmeerBro786")]]
-        await update.message.reply_text(welcome_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         restricted_msg = (
             f"⛔ **ACCESS RESTRICTED!**\n"
@@ -84,6 +68,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         keyboard = [[InlineKeyboardButton("💬 Contact Admin to Get Key", url="https://t.me/AmeerBro786")]]
         await update.message.reply_text(restricted_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    await update.message.reply_text(welcome_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def admin_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
