@@ -138,7 +138,6 @@ async def admin_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         await query.message.reply_text(msg, parse_mode="Markdown")
 
-# Single User Key Command
 async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id != ADMIN_ID:
@@ -166,7 +165,6 @@ async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
-# Multi User / Unlimited Key Command
 async def genmultikey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id != ADMIN_ID:
@@ -189,11 +187,37 @@ async def genmultikey(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏳ **Validity:** {days} Days (Per User)\n"
         f"🌐 **Type:** MULTI-USER (UNLIMITED)\n\n"
         f"📋 **KAISE USE KAREIN:**\n"
-        f"Is command ko sabhi dosto/groups me share karein:\n\n"
+        f"Is command ko share karein:\n\n"
         f"`/redeem {new_key}`\n\n"
         f"👨‍💻 **Owner:** {BOT_OWNER}"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
+
+# ADMIN COMMAND TO REVOKE / TURN OFF A KEY
+async def revoke(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Sirf Admin hi keys ko OFF / Revoke kar sakta hai.")
+        return
+
+    try:
+        target_key = context.args[0].strip()
+    except IndexError:
+        await update.message.reply_text("⚠️ **Format:** `/revoke <KEY_CODE>`\nExample: `/revoke AMEER-66NUKQQSRG`")
+        return
+
+    if target_key in KEYS_DB:
+        key_data = KEYS_DB[target_key]
+        
+        # Un sabhi users ka access band karein jinhone is key ko use kiya tha
+        for uid in key_data["used_by"]:
+            if uid in USERS_DB:
+                del USERS_DB[uid]
+
+        del KEYS_DB[target_key]
+        await update.message.reply_text(f"🚫 **KEY TURNED OFF / REVOKED!**\n\nKey `{target_key}` ko successfully delete aur band kar diya gaya hai.", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ Key nahi mili ya pehle se hi off hai!")
 
 async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -211,12 +235,10 @@ async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_key in KEYS_DB:
         key_data = KEYS_DB[user_key]
         
-        # Single User Check
         if not key_data["multi"] and len(key_data["used_by"]) > 0:
             await update.message.reply_text("❌ Ye Single-User Key pehle hi koi aur redeem kar chuka hai!")
             return
             
-        # Already Redeemed Check
         if user_id in key_data["used_by"]:
             await update.message.reply_text("⚠️ Aap pehle hi is key ko redeem kar chuke hain!")
             return
@@ -241,7 +263,7 @@ async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
     else:
-        await update.message.reply_text("❌ Galat Key! Sahi key lene ke liye Admin @AmeerBro786 se sampark karein.")
+        await update.message.reply_text("❌ Galat ya expired Key! Sahi key lene ke liye Admin @AmeerBro786 se sampark karein.")
 
 async def process_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -331,6 +353,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("genkey", genkey))
     app.add_handler(CommandHandler("genmultikey", genmultikey))
+    app.add_handler(CommandHandler("revoke", revoke))
     app.add_handler(CommandHandler("redeem", redeem))
     app.add_handler(CallbackQueryHandler(admin_button_click))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_video))
