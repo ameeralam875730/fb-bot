@@ -134,6 +134,9 @@ async def admin_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"`/redeem {new_key}`\n\n"
             f"3. Key activate hote hi aap {days} din tak kisi bhi FB, YT, ya Insta video se lyrics extract kar sakte hain.\n\n"
             f"⚠️ **Note:** {note_str}\n\n"
+            f"🚫 **ADMIN CONTROL (To Turn Off Key):**\n"
+            f"Key Off Karne Ke Liye Yeh Command Bhejein:\n"
+            f"`/revoke {new_key}`\n\n"
             f"👨‍💻 **Owner:** {BOT_OWNER}"
         )
         await query.message.reply_text(msg, parse_mode="Markdown")
@@ -161,6 +164,8 @@ async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👥 **Type:** SINGLE USER\n\n"
         f"📋 **KAISE USE KAREIN:**\n"
         f"Bot me bhejein: `/redeem {new_key}`\n\n"
+        f"🚫 **TO TURN OFF KEY:**\n"
+        f"`/revoke {new_key}`\n\n"
         f"👨‍💻 **Owner:** {BOT_OWNER}"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
@@ -189,11 +194,12 @@ async def genmultikey(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📋 **KAISE USE KAREIN:**\n"
         f"Is command ko share karein:\n\n"
         f"`/redeem {new_key}`\n\n"
+        f"🚫 **TO TURN OFF KEY:**\n"
+        f"`/revoke {new_key}`\n\n"
         f"👨‍💻 **Owner:** {BOT_OWNER}"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
-# ADMIN COMMAND TO REVOKE / TURN OFF A KEY
 async def revoke(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id != ADMIN_ID:
@@ -209,7 +215,6 @@ async def revoke(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target_key in KEYS_DB:
         key_data = KEYS_DB[target_key]
         
-        # Un sabhi users ka access band karein jinhone is key ko use kiya tha
         for uid in key_data["used_by"]:
             if uid in USERS_DB:
                 del USERS_DB[uid]
