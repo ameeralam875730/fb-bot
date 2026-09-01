@@ -3,21 +3,34 @@ import requests
 import yt_dlp
 import random
 import string
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
+# Dummy Web Server (Render Keep-Alive Ke Liye)
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot 24/7 Running!")
+
+def run_health_check_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
+
 # CONFIGURATION
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8811073395:AAHSWle6K63IwF4f2lvotJHCyQyZwYLasrY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
-ADMIN_ID = 1523935298  # Ameer Bro's Telegram ID
+ADMIN_ID = 1523935298
 
 BOT_NAME = "MediaLyrics AI Pro"
 BOT_OWNER = "@AmeerBro786"
 
-# Database Storage
-KEYS_DB = {}   # Format: {"KEY_CODE": {"days": 30, "multi": False, "used_by": []}}
-USERS_DB = {}  # Format: {user_id: expiry_datetime}
+KEYS_DB = {}
+USERS_DB = {}
 
 def generate_random_key(prefix="AMEER-", length=10):
     chars = string.ascii_uppercase + string.digits
@@ -34,7 +47,6 @@ def is_user_active(user_id):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    
     welcome_msg = (
         f"✨ **Welcome to {BOT_NAME}!** ✨\n\n"
         "Main aapke bhejey hue video se poora **Speech / Lyrics** extract karke de sakta hoon.\n\n"
@@ -57,14 +69,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/AmeerBro786")]]
     else:
         restricted_msg = (
-            f"⛔ **ACCESS RESTRICTED!**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"⛔ **ACCESS RESTRICTED!**\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"Aap is bot ko bina **Activation Key** ke use nahi kar sakte.\n\n"
-            f"🔑 **Key prapt karne ke liye Admin se contact karein:**\n"
-            f"👉 **Admin Contact:** {BOT_OWNER}\n\n"
+            f"🔑 **Key prapt karne ke liye Admin se contact karein:**\n👉 {BOT_OWNER}\n\n"
             f"--------------------------------------\n"
-            f"Aapke paas key hai toh redeem karein:\n"
-            f"`/redeem YOUR_KEY_HERE`"
+            f"Aapke paas key hai toh redeem karein:\n`/redeem YOUR_KEY_HERE`"
         )
         keyboard = [[InlineKeyboardButton("💬 Contact Admin to Get Key", url="https://t.me/AmeerBro786")]]
         await update.message.reply_text(restricted_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -82,39 +91,22 @@ async def admin_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if query.data == "admin_genkey_type":
         keyboard = [
-            [InlineKeyboardButton("👤 Single User Key (1 Person)", callback_data="menu_single")],
-            [InlineKeyboardButton("🌐 Multi User Key (Unlimited Log)", callback_data="menu_multi")]
+            [InlineKeyboardButton("👤 Single User Key", callback_data="menu_single")],
+            [InlineKeyboardButton("🌐 Multi User Key", callback_data="menu_multi")]
         ]
-        await query.message.reply_text(
-            "🔑 **Kis type ki key generate karni hai?**",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        await query.message.reply_text("🔑 **Kis type ki key generate karni hai?**", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif query.data == "menu_single":
-        keyboard = [
-            [
-                InlineKeyboardButton("7 Days", callback_data="gen_s_7"),
-                InlineKeyboardButton("30 Days", callback_data="gen_s_30"),
-                InlineKeyboardButton("365 Days", callback_data="gen_s_365")
-            ]
-        ]
+        keyboard = [[InlineKeyboardButton("7 Days", callback_data="gen_s_7"), InlineKeyboardButton("30 Days", callback_data="gen_s_30"), InlineKeyboardButton("365 Days", callback_data="gen_s_365")]]
         await query.message.reply_text("👤 **Single User Key Validity Chunein:**", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif query.data == "menu_multi":
-        keyboard = [
-            [
-                InlineKeyboardButton("7 Days", callback_data="gen_m_7"),
-                InlineKeyboardButton("30 Days", callback_data="gen_m_30"),
-                InlineKeyboardButton("365 Days", callback_data="gen_m_365")
-            ]
-        ]
-        await query.message.reply_text("🌐 **Multi User (Unlimited) Key Validity Chunein:**", reply_markup=InlineKeyboardMarkup(keyboard))
+        keyboard = [[InlineKeyboardButton("7 Days", callback_data="gen_m_7"), InlineKeyboardButton("30 Days", callback_data="gen_m_30"), InlineKeyboardButton("365 Days", callback_data="gen_m_365")]]
+        await query.message.reply_text("🌐 **Multi User Key Validity Chunein:**", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif query.data.startswith("gen_s_") or query.data.startswith("gen_m_"):
         is_multi = query.data.startswith("gen_m_")
         days = int(query.data.split("_")[2])
-        
         prefix = "MULTI-" if is_multi else "AMEER-"
         new_key = generate_random_key(prefix=prefix)
         KEYS_DB[new_key] = {"days": days, "multi": is_multi, "used_by": []}
@@ -123,250 +115,109 @@ async def admin_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         note_str = "Yeh key koi bhi kitne bhi log use kar sakte hain." if is_multi else "Yeh key ek hi user ke liye hai. Single use only."
 
         msg = (
-            f"🎉 **VIP ACCESS ACTIVATION KEY** 🎉\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🔑 **Your Key:** `{new_key}`\n"
-            f"⏳ **Validity:** {days} Days\n"
-            f"👥 **Type:** {type_str}\n\n"
-            f"📋 **KAISE USE KAREIN (GUIDELINES):**\n"
-            f"1. Sabse pehle bot par ja kar `/start` dabayein.\n"
-            f"2. Niche di gayi command ko copy karke bot me bhejhein:\n\n"
-            f"`/redeem {new_key}`\n\n"
-            f"3. Key activate hote hi aap {days} din tak kisi bhi FB, YT, ya Insta video se lyrics extract kar sakte hain.\n\n"
+            f"🎉 **VIP ACCESS ACTIVATION KEY** 🎉\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🔑 **Your Key:** `{new_key}`\n⏳ **Validity:** {days} Days\n👥 **Type:** {type_str}\n\n"
+            f"📋 **KAISE USE KAREIN:**\n1. Bot par ja kar `/start` dabayein.\n2. Command bhejhein:\n\n`/redeem {new_key}`\n\n"
             f"⚠️ **Note:** {note_str}\n\n"
-            f"🚫 **ADMIN CONTROL (To Turn Off Key):**\n"
-            f"Key Off Karne Ke Liye Yeh Command Bhejein:\n"
-            f"`/revoke {new_key}`\n\n"
-            f"👨‍💻 **Owner:** {BOT_OWNER}"
+            f"🚫 **ADMIN CONTROL (To Turn Off Key):**\n`/revoke {new_key}`\n\n👨‍💻 **Owner:** {BOT_OWNER}"
         )
         await query.message.reply_text(msg, parse_mode="Markdown")
 
-async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Sirf Admin (@AmeerBro786) hi keys generate kar sakta hai.")
-        return
-
-    try:
-        days = int(context.args[0])
-    except (IndexError, ValueError):
-        await update.message.reply_text("⚠️ **Format:** `/genkey <days>`\nExample: `/genkey 30`")
-        return
-
-    new_key = generate_random_key(prefix="AMEER-")
-    KEYS_DB[new_key] = {"days": days, "multi": False, "used_by": []}
-
-    msg = (
-        f"🎉 **VIP ACCESS ACTIVATION KEY** 🎉\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🔑 **Your Key:** `{new_key}`\n"
-        f"⏳ **Validity:** {days} Days\n"
-        f"👥 **Type:** SINGLE USER (1 PERSON ONLY)\n\n"
-        f"📋 **KAISE USE KAREIN (GUIDELINES):**\n"
-        f"1. Sabse pehle bot par ja kar `/start` dabayein.\n"
-        f"2. Niche di gayi command ko copy karke bot me bhejhein:\n\n"
-        f"`/redeem {new_key}`\n\n"
-        f"3. Key activate hote hi aap {days} din tak kisi bhi FB, YT, ya Insta video se lyrics extract kar sakte hain.\n\n"
-        f"⚠️ **Note:** Yeh key ek hi user ke liye hai. Single use only.\n\n"
-        f"🚫 **ADMIN CONTROL (To Turn Off Key):**\n"
-        f"Key Off Karne Ke Liye Yeh Command Bhejein:\n"
-        f"`/revoke {new_key}`\n\n"
-        f"👨‍💻 **Owner:** {BOT_OWNER}"
-    )
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-async def genmultikey(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Sirf Admin (@AmeerBro786) hi keys generate kar sakta hai.")
-        return
-
-    try:
-        days = int(context.args[0])
-    except (IndexError, ValueError):
-        await update.message.reply_text("⚠️ **Format:** `/genmultikey <days>`\nExample: `/genmultikey 30`")
-        return
-
-    new_key = generate_random_key(prefix="MULTI-")
-    KEYS_DB[new_key] = {"days": days, "multi": True, "used_by": []}
-
-    msg = (
-        f"🎉 **VIP ACCESS ACTIVATION KEY** 🎉\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🔑 **Your Key:** `{new_key}`\n"
-        f"⏳ **Validity:** {days} Days\n"
-        f"👥 **Type:** MULTI-USER (UNLIMITED USERS)\n\n"
-        f"📋 **KAISE USE KAREIN (GUIDELINES):**\n"
-        f"1. Sabse pehle bot par ja kar `/start` dabayein.\n"
-        f"2. Niche di gayi command ko copy karke bot me bhejhein:\n\n"
-        f"`/redeem {new_key}`\n\n"
-        f"3. Key activate hote hi aap {days} din tak kisi bhi FB, YT, ya Insta video se lyrics extract kar sakte hain.\n\n"
-        f"⚠️ **Note:** Yeh key koi bhi kitne bhi log use kar sakte hain.\n\n"
-        f"🚫 **ADMIN CONTROL (To Turn Off Key):**\n"
-        f"Key Off Karne Ke Liye Yeh Command Bhejein:\n"
-        f"`/revoke {new_key}`\n\n"
-        f"👨‍💻 **Owner:** {BOT_OWNER}"
-    )
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
 async def revoke(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Sirf Admin hi keys ko OFF / Revoke kar sakta hai.")
+    if update.message.from_user.id != ADMIN_ID:
         return
-
     try:
         target_key = context.args[0].strip()
     except IndexError:
-        await update.message.reply_text("⚠️ **Format:** `/revoke <KEY_CODE>`\nExample: `/revoke MULTI-6G4ACMNXTH`")
+        await update.message.reply_text("⚠️ **Format:** `/revoke <KEY_CODE>`")
         return
 
     if target_key in KEYS_DB:
-        key_data = KEYS_DB[target_key]
-        
-        for uid in key_data["used_by"]:
+        for uid in KEYS_DB[target_key]["used_by"]:
             if uid in USERS_DB:
                 del USERS_DB[uid]
-
         del KEYS_DB[target_key]
-        await update.message.reply_text(f"🚫 **KEY TURNED OFF / REVOKED!**\n\nKey `{target_key}` ko successfully delete aur band kar diya gaya hai.", parse_mode="Markdown")
+        await update.message.reply_text(f"🚫 Key `{target_key}` revoke kar di gayi hai.", parse_mode="Markdown")
     else:
-        await update.message.reply_text("❌ Key nahi mili ya pehle se hi off hai!")
+        await update.message.reply_text("❌ Key nahi mili!")
 
 async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    
     if user_id == ADMIN_ID:
-        await update.message.reply_text("👑 Aap Owner hain, aapko key redeem karne ki koi zaroorat nahi hai!")
+        await update.message.reply_text("👑 Aap Owner hain!")
         return
 
     try:
         user_key = context.args[0].strip()
     except IndexError:
-        await update.message.reply_text("⚠️ Kripya key daalein!\nExample: `/redeem AMEER-XXXXXXXX`")
+        await update.message.reply_text("⚠️ Key daalein: `/redeem YOUR_KEY`")
         return
 
     if user_key in KEYS_DB:
         key_data = KEYS_DB[user_key]
-        
         if not key_data["multi"] and len(key_data["used_by"]) > 0:
-            await update.message.reply_text("❌ Ye Single-User Key pehle hi koi aur redeem kar chuka hai!")
+            await update.message.reply_text("❌ Ye Key use ho chuki hai!")
             return
-            
         if user_id in key_data["used_by"]:
-            await update.message.reply_text("⚠️ Aap pehle hi is key ko redeem kar chuke hain!")
+            await update.message.reply_text("⚠️ Aap ise redeem kar chuke hain!")
             return
 
         days = key_data["days"]
         KEYS_DB[user_key]["used_by"].append(user_id)
-        
         current_expiry = USERS_DB.get(user_id, datetime.now())
         if current_expiry < datetime.now():
             current_expiry = datetime.now()
-            
         new_expiry = current_expiry + timedelta(days=days)
         USERS_DB[user_id] = new_expiry
 
-        exp_str = new_expiry.strftime("%d-%b-%Y")
-        await update.message.reply_text(
-            f"🎉 **KEY ACTIVATED SUCCESSFULLY!**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"• **Access Duration:** {days} Days\n"
-            f"• **Expiry Date:** {exp_str}\n\n"
-            f"🚀 Ab aap koi bhi Facebook, YouTube ya Instagram video link bhej sakte hain!",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"🎉 **KEY ACTIVATED!** ({days} Days)", parse_mode="Markdown")
     else:
-        await update.message.reply_text("❌ Galat ya expired Key! Sahi key lene ke liye Admin @AmeerBro786 se sampark karein.")
+        await update.message.reply_text("❌ Galat ya Expired Key!")
 
 async def process_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-
     if not is_user_active(user_id):
-        restricted_msg = (
-            f"⛔ **ACCESS DENIED!**\n\n"
-            f"Aapka access expire ho gaya hai ya aapke paas valid key nahi hai.\n"
-            f"Key khareedne ke liye Admin se baat karein: {BOT_OWNER}"
-        )
-        keyboard = [[InlineKeyboardButton("💬 Contact Admin", url="https://t.me/AmeerBro786")]]
-        await update.message.reply_text(restricted_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text(f"⛔ Access Expired! Contact: {BOT_OWNER}")
         return
 
     url = update.message.text.strip()
-    valid_platforms = ["facebook.com", "fb.watch", "youtube.com", "youtu.be", "instagram.com"]
-    if not any(domain in url for domain in valid_platforms):
-        await update.message.reply_text("⚠️ **Invalid Link!**\nKripya Facebook, YouTube, ya Instagram ka valid video link bhejein.")
+    if not any(d in url for d in ["facebook.com", "fb.watch", "youtube.com", "youtu.be", "instagram.com"]):
+        await update.message.reply_text("⚠️ Valid video link send karein.")
         return
 
-    status_msg = await update.message.reply_text("⚡ **[1/3] Video Processing Started...**\nAudio extract kiya ja raha hai...")
+    status_msg = await update.message.reply_text("⚡ Processing Video...")
     audio_file = f"audio_{update.message.message_id}.mp3"
 
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': f'audio_{update.message.message_id}',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '128',
-        }],
-        'quiet': True,
-        'no_warnings': True
-    }
+    ydl_opts = {'format': 'bestaudio/best', 'outtmpl': f'audio_{update.message.message_id}', 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '128'}], 'quiet': True}
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        await status_msg.edit_text("🎙️ **[2/3] Audio Extracted!**\nAI Whisper Engine lyrics generate kar raha hai...")
+        await status_msg.edit_text("🎙️ Audio Extracted! Extracting text...")
 
         with open(audio_file, "rb") as file:
-            response = requests.post(
-                "https://api.groq.com/openai/v1/audio/transcriptions",
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-                files={"file": (audio_file, file, "audio/mp3")},
-                data={"model": "whisper-large-v3"}
-            )
+            response = requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers={"Authorization": f"Bearer {GROQ_API_KEY}"}, files={"file": (audio_file, file, "audio/mp3")}, data={"model": "whisper-large-v3"})
 
         if os.path.exists(audio_file):
             os.remove(audio_file)
 
-        result = response.json()
-        extracted_text = result.get("text", "").strip()
-
+        extracted_text = response.json().get("text", "").strip()
         if extracted_text:
             await status_msg.delete()
-            
-            header = f"🎬 **EXTRACTED LYRICS / SPEECH**\n"
-            header += f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            footer = f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n"
-            footer += f"🤖 **Generated by:** {BOT_NAME}\n"
-            footer += f"👑 **Owner:** {BOT_OWNER}"
-
-            full_response = header + extracted_text + footer
-
-            keyboard = [[InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/AmeerBro786")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            if len(full_response) > 4000:
-                for i in range(0, len(extracted_text), 3500):
-                    part = extracted_text[i:i+3500]
-                    await update.message.reply_text(f"📝 **Part:**\n\n{part}")
-                await update.message.reply_text(footer, reply_markup=reply_markup)
-            else:
-                await update.message.reply_text(full_response, parse_mode="Markdown", reply_markup=reply_markup)
+            await update.message.reply_text(f"🎬 **EXTRACTED LYRICS:**\n\n{extracted_text}", parse_mode="Markdown")
         else:
-            await status_msg.edit_text("❌ **No Speech Found!**\nIs video me koi clear lyrics ya voice over nahi mila.")
-
+            await status_msg.edit_text("❌ No Speech Found!")
     except Exception as e:
-        await status_msg.edit_text(f"❌ **Error Occurred:**\n`{str(e)}`")
+        await status_msg.edit_text(f"❌ Error: `{str(e)}`")
         if os.path.exists(audio_file):
             os.remove(audio_file)
 
 def main():
+    threading.Thread(target=run_health_check_server, daemon=True).start()
+
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("genkey", genkey))
-    app.add_handler(CommandHandler("genmultikey", genmultikey))
     app.add_handler(CommandHandler("revoke", revoke))
     app.add_handler(CommandHandler("redeem", redeem))
     app.add_handler(CallbackQueryHandler(admin_button_click))
