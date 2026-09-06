@@ -1,6 +1,5 @@
 import os
 import requests
-import yt_dlp
 import random
 import string
 import threading
@@ -45,17 +44,34 @@ def is_user_active(user_id):
             return True
     return False
 
-def resolve_facebook_link(url):
-    """ Facebook Share/Short URLs Ko Direct Standard Link Me Convert Karta Hai """
+def get_direct_audio_url(video_url):
+    """ Rapid/PubAPI Facebook Downloader to bypass share links """
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/122.0.0.0 Safari/537.36"
-        }
-        response = requests.head(url, headers=headers, allow_redirects=True, timeout=10)
-        resolved_url = response.url
-        return resolved_url
+        # FB Downloader Engine
+        api_endpoint = "https://api.v2.srapid.site/fb"
+        params = {"url": video_url}
+        res = requests.get(api_endpoint, params=params, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("status") and data.get("data"):
+                # Return highest quality audio/video URL
+                return data["data"].get("hd") or data["data"].get("sd")
     except Exception:
-        return url
+        pass
+    
+    # Fallback Cobalt Engine
+    try:
+        cobalt_url = "https://api.cobalt.tools/api/json"
+        payload = {"url": video_url, "downloadMode": "audio", "audioFormat": "mp3"}
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        res = requests.post(cobalt_url, json=payload, headers=headers, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            return data.get("url")
+    except Exception:
+        pass
+
+    return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -192,71 +208,64 @@ async def process_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⛔ Access Expired! Contact: {BOT_OWNER}")
         return
 
-    raw_url = update.message.text.strip()
-    if not any(d in raw_url for d in ["facebook.com", "fb.watch", "youtube.com", "youtu.be", "instagram.com"]):
+    video_url = update.message.text.strip()
+    if not any(d in video_url for d in ["facebook.com", "fb.watch", "youtube.com", "youtu.be", "instagram.com"]):
         await update.message.reply_text("⚠️ Valid video link send karein.")
         return
 
-    status_msg = await update.message.reply_text("⚡ Processing Video...")
+    status_msg = await update.message.reply_text("⚡ Extracting media link...")
 
-    # Redirect Resolution
-    final_url = resolve_facebook_link(raw_url)
+    direct_media_url = get_direct_audio_url(video_url)
 
-    file_prefix = f"audio_{update.message.message_id}"
-    expected_audio_file = f"{file_prefix}.mp3"
+    if not direct_media_url:
+        await status_msg.edit_text("❌ Facebook ne is share link ko block kar diya hai. Kripya video ka Direct Reel Link ya YouTube Link try karein.")
+        return
 
-    ydl_opts = {
-        'format': 'ba/b',
-        'outtmpl': file_prefix,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '128',
-        }],
-        'quiet': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-        'geo_bypass': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-        }
-    }
+    await status_msg.edit_text("📥 Downloading Audio Stream...")
+
+    audio_file = f"media_{update.message.message_id}.mp3"
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([final_url])
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        media_req = requests.get(direct_media_url, headers=headers, stream=True, timeout=30)
+        
+        with open(audio_file, 'wb') as f:
+            for chunk in media_req.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
 
-        if not os.path.exists(expected_audio_file) or os.path.getsize(expected_audio_file) == 0:
-            await status_msg.edit_text("❌ Video se audio extract nahi ho pa raha hai. Public video link try karein.")
+        if not os.path.exists(audio_file) or os.path.getsize(audio_file) < 5000:
+            await status_msg.edit_text("❌ Audio download nahi ho paya.")
+            if os.path.exists(audio_file):
+                os.remove(audio_file)
             return
 
-        await status_msg.edit_text("🎙️ Audio Extracted! Extracting text...")
+        await status_msg.edit_text("🎙️ Extracting Text/Speech...")
 
-        with open(expected_audio_file, "rb") as file:
+        with open(audio_file, "rb") as file:
             groq_res = requests.post(
                 "https://api.groq.com/openai/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-                files={"file": (expected_audio_file, file, "audio/mp3")},
+                files={"file": (audio_file, file, "audio/mp3")},
                 data={"model": "whisper-large-v3"}
             )
 
-        if os.path.exists(expected_audio_file):
-            os.remove(expected_audio_file)
+        if os.path.exists(audio_file):
+            os.remove(audio_file)
 
         result_json = groq_res.json()
         extracted_text = result_json.get("text", "").strip()
 
         if extracted_text:
             await status_msg.delete()
-            await update.message.reply_text(f"🎬 **EXTRACTED LYRICS:**\n\n{extracted_text}", parse_mode="Markdown")
+            await update.message.reply_text(f"🎬 **EXTRACTED LYRICS / SPEECH:**\n\n{extracted_text}", parse_mode="Markdown")
         else:
-            await status_msg.edit_text("❌ No Speech Found! (Is video me clear dialogue/audio nahi mila)")
+            await status_msg.edit_text("❌ No Speech Found! (Video me clear voice nahi mili)")
 
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: `{str(e)}`")
-        if os.path.exists(expected_audio_file):
-            os.remove(expected_audio_file)
+        if os.path.exists(audio_file):
+            os.remove(audio_file)
 
 def main():
     threading.Thread(target=run_health_check_server, daemon=True).start()
