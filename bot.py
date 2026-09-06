@@ -186,32 +186,66 @@ async def process_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     status_msg = await update.message.reply_text("⚡ Processing Video...")
-    audio_file = f"audio_{update.message.message_id}.mp3"
 
-    ydl_opts = {'format': 'bestaudio/best', 'outtmpl': f'audio_{update.message.message_id}', 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '128'}], 'quiet': True}
+    # Auto-Resolve Redirects for Shortened Links (FB Share links, bit.ly, etc.)
+    try:
+        session = requests.Session()
+        res = session.head(url, allow_redirects=True, timeout=10)
+        url = res.url
+    except Exception:
+        pass
+
+    file_prefix = f"audio_{update.message.message_id}"
+    expected_audio_file = f"{file_prefix}.mp3"
+
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': file_prefix,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '128',
+        }],
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
+        if not os.path.exists(expected_audio_file) or os.path.getsize(expected_audio_file) == 0:
+            await status_msg.edit_text("❌ Video se audio extract nahi ho paya! Link public hona chahiye.")
+            return
+
         await status_msg.edit_text("🎙️ Audio Extracted! Extracting text...")
 
-        with open(audio_file, "rb") as file:
-            response = requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers={"Authorization": f"Bearer {GROQ_API_KEY}"}, files={"file": (audio_file, file, "audio/mp3")}, data={"model": "whisper-large-v3"})
+        with open(expected_audio_file, "rb") as file:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                files={"file": (expected_audio_file, file, "audio/mp3")},
+                data={"model": "whisper-large-v3"}
+            )
 
-        if os.path.exists(audio_file):
-            os.remove(audio_file)
+        if os.path.exists(expected_audio_file):
+            os.remove(expected_audio_file)
 
-        extracted_text = response.json().get("text", "").strip()
+        result_json = response.json()
+        extracted_text = result_json.get("text", "").strip()
+
         if extracted_text:
             await status_msg.delete()
             await update.message.reply_text(f"🎬 **EXTRACTED LYRICS:**\n\n{extracted_text}", parse_mode="Markdown")
         else:
-            await status_msg.edit_text("❌ No Speech Found!")
+            await status_msg.edit_text("❌ No Speech Found! (Is video me clear voice/audio nahi mila)")
+
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: `{str(e)}`")
-        if os.path.exists(audio_file):
-            os.remove(audio_file)
+        if os.path.exists(expected_audio_file):
+            os.remove(expected_audio_file)
 
 def main():
     threading.Thread(target=run_health_check_server, daemon=True).start()
