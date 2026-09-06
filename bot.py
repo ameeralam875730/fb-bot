@@ -1,6 +1,5 @@
 import os
 import requests
-import yt_dlp
 import random
 import string
 import threading
@@ -174,6 +173,14 @@ async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Galat ya Expired Key!")
 
+def download_file(media_url, audio_filename):
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    res = requests.get(media_url, headers=headers, stream=True, timeout=30)
+    with open(audio_filename, 'wb') as f:
+        for chunk in res.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+
 async def process_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if not is_user_active(user_id):
@@ -186,66 +193,56 @@ async def process_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     status_msg = await update.message.reply_text("⚡ Processing Video...")
-
-    # Auto-Resolve Redirects for Shortened Links (FB Share links, bit.ly, etc.)
-    try:
-        session = requests.Session()
-        res = session.head(url, allow_redirects=True, timeout=10)
-        url = res.url
-    except Exception:
-        pass
-
-    file_prefix = f"audio_{update.message.message_id}"
-    expected_audio_file = f"{file_prefix}.mp3"
-
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': file_prefix,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '128',
-        }],
-        'quiet': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
+    audio_file = f"audio_{update.message.message_id}.mp3"
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        # API Service for Facebook / Instagram / Shorts Direct Extraction
+        api_url = f"https://api.cobalt.tools/api/json"
+        payload = {"url": url, "downloadMode": "audio", "audioFormat": "mp3"}
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        
+        response = requests.post(api_url, json=payload, headers=headers, timeout=15)
+        res_data = response.json()
 
-        if not os.path.exists(expected_audio_file) or os.path.getsize(expected_audio_file) == 0:
-            await status_msg.edit_text("❌ Video se audio extract nahi ho paya! Link public hona chahiye.")
+        audio_download_url = res_data.get("url")
+
+        if not audio_download_url:
+            await status_msg.edit_text("❌ Video se audio extract nahi ho pa raha hai. Link check karein.")
             return
 
-        await status_msg.edit_text("🎙️ Audio Extracted! Extracting text...")
+        await status_msg.edit_text("📥 Downloading Audio...")
+        download_file(audio_download_url, audio_file)
 
-        with open(expected_audio_file, "rb") as file:
-            response = requests.post(
+        if not os.path.exists(audio_file) or os.path.getsize(audio_file) == 0:
+            await status_msg.edit_text("❌ Audio file empty mili. Doosri link try karein.")
+            return
+
+        await status_msg.edit_text("🎙️ Extracting Lyrics / Speech...")
+
+        with open(audio_file, "rb") as file:
+            groq_res = requests.post(
                 "https://api.groq.com/openai/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-                files={"file": (expected_audio_file, file, "audio/mp3")},
+                files={"file": (audio_file, file, "audio/mp3")},
                 data={"model": "whisper-large-v3"}
             )
 
-        if os.path.exists(expected_audio_file):
-            os.remove(expected_audio_file)
+        if os.path.exists(audio_file):
+            os.remove(audio_file)
 
-        result_json = response.json()
+        result_json = groq_res.json()
         extracted_text = result_json.get("text", "").strip()
 
         if extracted_text:
             await status_msg.delete()
             await update.message.reply_text(f"🎬 **EXTRACTED LYRICS:**\n\n{extracted_text}", parse_mode="Markdown")
         else:
-            await status_msg.edit_text("❌ No Speech Found! (Is video me clear voice/audio nahi mila)")
+            await status_msg.edit_text("❌ No Speech Found! (Is video me clear dialogue/audio nahi mila)")
 
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: `{str(e)}`")
-        if os.path.exists(expected_audio_file):
-            os.remove(expected_audio_file)
+        if os.path.exists(audio_file):
+            os.remove(audio_file)
 
 def main():
     threading.Thread(target=run_health_check_server, daemon=True).start()
